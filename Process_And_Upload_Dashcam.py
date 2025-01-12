@@ -56,6 +56,7 @@ def parse_nmea(filename):
     endLat = None
     endLon = None
     date = None
+    stationary = True
 
     with open(filename, "rb") as stream:
         nmr = NMEAReader(stream, nmeaonly=False, quitonerror=False, errorhandler=errhandler)
@@ -69,11 +70,13 @@ def parse_nmea(filename):
                     endTime=parsed_data.time
                     endLat=parsed_data.lat
                     endLon=parsed_data.lon
+                    if (endLat != startLat) or (endLon != startLon):
+                        stationary=False
                 if parsed_data.msgID == "RMC":
                     if not date:
                         date=parsed_data.date
 
-    if date and startLat and startLon:
+    if date and not stationary:
         gmtStart = time.strptime(f"{str(date)} {str(startTime)}", "%Y-%m-%d %H:%M:%S")
         localStart = time.localtime(calendar.timegm(gmtStart))
 
@@ -109,7 +112,8 @@ for entry in os.scandir(sdcardDir):
         # Move files from SD card to "<yyyy-mm-dd>" directory under work directory
         if not ignore_video:
             dir=workDir+time.strftime('%Y-%m-%d',startDateTime)
-            dirs.append(dir)
+            if dir not in dirs:
+                dirs.append(dir)
 
             if not os.path.isdir(dir):
                 os.mkdir(dir)
