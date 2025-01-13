@@ -10,7 +10,10 @@
 #    2b. Use mapillary_tools to upload
 
 # TODO: Process rear camera photos as well?  (FILEE*.MP4)
-# TODO: Remove rear camera and skipped files from SD Crad?
+# TODO: Remove rear camera and skipped files from SD Card?
+# TODO: Add options to:
+#       1) Copy ISO move; don't process; don't upload
+# TODO: Put nmea and vide files in directory named after geocode of start
 
 import calendar
 import datetime
@@ -76,6 +79,9 @@ def parse_nmea(filename):
                     if not date:
                         date=parsed_data.date
 
+    if stationary:
+        print(f"-- Stationary video, {filename}")
+
     if date and not stationary:
         gmtStart = time.strptime(f"{str(date)} {str(startTime)}", "%Y-%m-%d %H:%M:%S")
         localStart = time.localtime(calendar.timegm(gmtStart))
@@ -95,7 +101,7 @@ for entry in os.scandir(sdcardDir):
 
         # Ignore files that don't have a start time (GPS lock not obtained)
         if not startDateTime:
-            print(f"-- No time/date parsed from NMEA, skip {entry.name}")
+            print(f"-- No time/date parsed from NMEA or stationary video, skip {entry.name}")
             continue
 
         # Ignore video within delta of ignore co-ords from config file
@@ -126,7 +132,6 @@ for entry in os.scandir(sdcardDir):
             src=entry.path.replace(".NMEA",".MP4")
             print(f"++ Move from {src} to {dir}")
             shutil.move(src, dir)
-        print("\n")
 
 for dir in dirs:
     print(f"Process {dir}")
