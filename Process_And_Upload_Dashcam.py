@@ -15,6 +15,7 @@
 #       1) Copy ISO move; don't process; don't upload
 # TODO: Put nmea and vide files in directory named after geocode of start
 
+import argparse
 import calendar
 import datetime
 import os
@@ -26,6 +27,15 @@ import time
 import json
 from geopy import distance
 from pynmeagps.nmeareader import NMEAReader
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--copy", "-c", help="Copy files from SD card instead of moving",
+                    action="store_true")
+parser.add_argument("--dont_process", "-dp", help="Don't process or upload videos to Mapillary",
+                    action="store_true")
+parser.add_argument("--dont_upload", "-du", help="Don't upload videos to Mapillary",
+                    action="store_true")
+args = parser.parse_args()
 
 config = json.load(open("dashcam.json"))
 sdcardDir = config['sdcard_dir']
@@ -126,17 +136,25 @@ for entry in os.scandir(sdcardDir):
 
             dest=os.path.join(dir, entry.name.replace(".NMEA",".nmea"))
 
-            print(f"++ Move from {entry.path} to {dest}")
-            shutil.move(entry.path, dest)
-
             src=entry.path.replace(".NMEA",".MP4")
-            print(f"++ Move from {src} to {dir}")
-            shutil.move(src, dir)
+            if args.copy:
+                print(f"++ Copy from {entry.path} to {dest}")
+                shutil.copy(entry.path, dest)
+                print(f"++ Copy from {src} to {dir}")
+                shutil.copy(src, dir)
+            else:
+                print(f"++ Move from {entry.path} to {dest}")
+                shutil.move(entry.path, dest)
+                print(f"++ Move from {src} to {dir}")
+                shutil.move(src, dir)
 
-for dir in dirs:
-    print(f"Process {dir}")
-    subprocess.call(["mapillary_tools","process","--video_geotag_source","nmea",dir])
 
-for dir in dirs:
-    print(f"Upload {dir}")
-    subprocess.call(["mapillary_tools","upload",dir])
+if not args.dont_process:
+    for dir in dirs:
+        print(f"Process {dir}")
+        subprocess.call(["mapillary_tools","process","--video_geotag_source","nmea",dir])
+
+if not args.dont_process and not args.dont_upload:
+    for dir in dirs:
+        print(f"Upload {dir}")
+        subprocess.call(["mapillary_tools","upload",dir])
