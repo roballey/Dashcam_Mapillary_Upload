@@ -1,4 +1,4 @@
-#! /usr/bin/python3
+#! /usr/bin/env python3
 
 # Upload Pioneer dash cam photos from SD card to Mapillary.
 
@@ -11,8 +11,6 @@
 
 # TODO: Process rear camera photos as well?  (FILEE*.MP4)
 # TODO: Remove rear camera and skipped files from SD Card?
-# TODO: Add options to:
-#       1) Copy ISO move; don't process; don't upload
 # TODO: Put nmea and vide files in directory named after geocode of start
 
 import argparse
@@ -26,6 +24,7 @@ import time
 
 import json
 from geopy import distance
+from geopy.geocoders import Nominatim
 from pynmeagps.nmeareader import NMEAReader
 
 parser = argparse.ArgumentParser()
@@ -101,33 +100,73 @@ def parse_nmea(filename):
     else:
         return None,  (None, None), (None, None)
 
+class Geocode:
+  def __init__(self):
+    Geocode.geolocator = Nominatim(user_agent="Process_And_Upload_Dashcam")
+    Geocode.last = None;
+
+  def reverse(self, coords):
+
+      if coords is None:
+          print("No lat/lon, not moving")
+          return None
+      else:
+          if Geocode.last and ((datetime.datetime.now()-Geocode.last).total_seconds() < 3):
+            time.sleep(3)
+
+          location = Geocode.geolocator.reverse(coords)
+          Geocode.last=datetime.datetime.now()
+
+          locName=""
+          if 'hamlet' in location.raw['address']:
+              locName=location.raw['address']['hamlet']
+          elif 'village' in location.raw['address']:
+              locName=location.raw['address']['village']
+          elif 'suburb' in location.raw['address']:
+              locName=location.raw['address']['suburb']
+          elif 'town' in location.raw['address']:
+              locName=location.raw['address']['town']
+          elif 'city' in location.raw['address']:
+              locName=location.raw['address']['city']
+          else:
+              print(f"{fullName} No location from - {location.raw}")
+
+          locName=locName.replace(" ","_")
+          return locName
+
 # -----------------------------------------------------------------
 
 dirs=[]
 
+geo=Geocode()
+
 for entry in os.scandir(sdcardDir):
     if entry.name.endswith(".NMEA"):
+        name, ext=os.path.splitext(entry.name)
         startDateTime, start, end=parse_nmea(entry.path)
 
         # Ignore files that don't have a start time (GPS lock not obtained)
         if not startDateTime:
-            print(f"-- No time/date parsed from NMEA or stationary video, skip {entry.name}")
+            print(f"-- No time/date parsed from NMEA or stationary video, skip {name}")
             continue
+
+        area=geo.reverse(start)
 
         # Ignore video within delta of ignore co-ords from config file
         ignore_video = False
         for ignore in config['ignore']:
             if distance.distance((ignore['lat'],ignore['lon']), start).km < ignore['delta']:
-                print(f"-- Start close to {ignore['name']}, skip {entry.name}")
+                print(f"-- Start close to {ignore['name']}, skip {area} {name}")
                 ignore_video = True
 
             elif distance.distance((ignore['lat'],ignore['lon']), end).km < ignore['delta']:
-                print(f"-- End close to {ignore['name']}, skip {entry.name}")
+                print(f"-- End close to {ignore['name']}, skip {area} {name}")
                 ignore_video = True
 
         # Move files from SD card to "<yyyy-mm-dd>" directory under work directory
         if not ignore_video:
-            dir=workDir+time.strftime('%Y-%m-%d',startDateTime)
+
+            dir=workDir+time.strftime('%Y-%m-%d',startDateTime)+"_"+area
             if dir not in dirs:
                 dirs.append(dir)
 
@@ -138,23 +177,25 @@ for entry in os.scandir(sdcardDir):
 
             src=entry.path.replace(".NMEA",".MP4")
             if args.copy:
-                print(f"++ Copy from {entry.path} to {dest}")
+                print(f"++ Copy {name} files to {dir}")
                 shutil.copy(entry.path, dest)
-                print(f"++ Copy from {src} to {dir}")
                 shutil.copy(src, dir)
             else:
-                print(f"++ Move from {entry.path} to {dest}")
+                print(f"++ Move {name} files to {dir}")
                 shutil.move(entry.path, dest)
-                print(f"++ Move from {src} to {dir}")
                 shutil.move(src, dir)
 
 
-if not args.dont_process:
-    for dir in dirs:
-        print(f"Process {dir}")
-        subprocess.call(["mapillary_tools","process","--video_geotag_source","nmea",dir])
+for dir in dirs:
+  if args.dont_process:
+    print(f"Not processing {dir} for Mapillary")
+  else:
+    print(f"Process {dir}")
+    subprocess.call(["mapillary_tools","process","--video_geotag_source","nmea",dir])
 
-if not args.dont_process and not args.dont_upload:
-    for dir in dirs:
-        print(f"Upload {dir}")
-        subprocess.call(["mapillary_tools","upload",dir])
+for dir in dirs:
+    if args.dont_process or args.dont_upload:
+      print(f"Not uploading {dir} to Mapillary")
+    else:
+      print(f"Upload {dir}")
+      subprocess.call(["mapillary_tools","upload",dir])
