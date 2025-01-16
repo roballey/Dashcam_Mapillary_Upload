@@ -2,16 +2,16 @@
 
 # Upload Pioneer dash cam photos from SD card to Mapillary.
 
-# 1. Moves front video and nmea files from SD card to "<yyyy-mm-dd>" directory under work directory
-#    1a. Ignore files without GPS lock
+# 1. Moves front video and nmea files from SD card to "<yyyy-mm-dd>_<area>" directory under work directory
+#    Where <yyyy-mm-dd> is the starting date from the NMEA file and <area> is the reverse geocoded name of the start position
+#    1a. Ignore files without GPS lock or if entire video is stationary
 #    1b. Renames .NMEA files to have lowercase extension
-# 2. Foreach  "<yyyy-mm-dd>" directory created:
-#    2a. Use mapillary_tools to process with .nmea filke
-#    2b. Use mapillary_tools to upload
+# 2. Foreach  "<yyyy-mm-dd>_<area>" directory created:
+#    2a. Use mapillary_tools to process videos with .nmea file
+#    2b. Use mapillary_tools to upload videos
 
 # TODO: Process rear camera photos as well?  (FILEE*.MP4)
 # TODO: Remove rear camera and skipped files from SD Card?
-# TODO: Put nmea and vide files in directory named after geocode of start
 
 import argparse
 import calendar
@@ -111,8 +111,8 @@ class Geocode:
           print("No lat/lon, not moving")
           return None
       else:
-          if Geocode.last and ((datetime.datetime.now()-Geocode.last).total_seconds() < 3):
-            time.sleep(3)
+          if Geocode.last and ((datetime.datetime.now()-Geocode.last).total_seconds() < 2):
+            time.sleep(2)
 
           location = Geocode.geolocator.reverse(coords)
           Geocode.last=datetime.datetime.now()
