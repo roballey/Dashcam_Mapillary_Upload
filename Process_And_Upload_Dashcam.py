@@ -92,7 +92,7 @@ def parse_nmea(filename):
         print(f"-- Stationary video, {filename}")
 
     if date and not stationary:
-        gmtStart = time.strptime(f"{str(date)} {str(startTime)}", "%Y-%m-%d %H:%M:%S")
+        gmtStart = time.strptime(f"{str(date)} {str(startTime)[:8]}", "%Y-%m-%d %H:%M:%S")
         localStart = time.localtime(calendar.timegm(gmtStart))
 
         # Return time.struct_time, (lat, lon), (lat, lon)
