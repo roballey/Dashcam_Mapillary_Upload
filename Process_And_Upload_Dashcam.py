@@ -48,6 +48,14 @@ if not os.path.isdir(workDir):
     print(f"Destination '{workDir}' Does not exist")
     exit(1)
 
+workDir=workDir+"/Downloaded-"+datetime.datetime.now().strftime('%Y-%m-%d')
+
+if not os.path.isdir(workDir):
+    os.mkdir(workDir)
+    print(f"{workDir} created.")
+else:
+    print(f"{workDir} exists.")
+
 # -----------------------------------------------------------------
 def errhandler(err):
     """
