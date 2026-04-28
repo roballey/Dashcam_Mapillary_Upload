@@ -5,18 +5,15 @@
 # 1. Moves front video and nmea files from SD card to "<yyyy-mm-dd>_<area>" directory under work directory
 #    Where <yyyy-mm-dd> is the starting date from the NMEA file and <area> is the reverse geocoded name of the start position
 #    1a. Ignore files without GPS lock or if entire video is stationary
-#    1b. Renames .NMEA files to have lowercase extension
-#    1c. Converts .nmea file to .gpx files with `gpsbabel`
+#    1b. Converts .nmea file to .gpx files with `gpsbabel`
 # 2. Foreach  "<yyyy-mm-dd>_<area>" directory created:
-#    2a. Use mapillary_tools to process videos with .nmea file
+#    2a. Use mapillary_tools to process videos with .gpx file
 #    2b. Use mapillary_tools to upload videos
 
-# TODO: Process rear camera photos as well?  (FILEE*.MP4)
+# TODO: Process rear camera photos as well?  (FILEE*.MP4)   (Can no longer see rear camera files on SDCARD as of 2026)
 # TODO: Remove rear camera and skipped files from SD Card?
 #
 # NOTE: Process with NMEA no longer works, get 0 meta data and file does not upload
-#       Converting .nmea file to GPX with https://mygeodata.cloud/ or `gpsbabel` 
-#       and uploading MP4 file with .gpx file via Linux desktop uploader works
 #       This script has been modified to convert .nmea file to .gpx via `gpsbabel`
 #       (install with apt) and process with .gpx files.
 
@@ -36,7 +33,7 @@ from geopy.geocoders import Nominatim
 from pynmeagps.nmeareader import NMEAReader
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--copy", "-c", help="Copy files from SD card instead of moving",
+parser.add_argument("--keep", "-k", help="Keep files on SD card instead of moving",
                     action="store_true")
 parser.add_argument("--dontProcess", "-dp", help="Don't process or upload videos to Mapillary",
                     action="store_true")
@@ -48,24 +45,28 @@ configFile = Path.home() / ".config" / "dashcam.json"
 
 config = json.load(open(configFile))
 sdcardDir = config['sdcard_dir']
-workDir = config['work_dir']
+workDirRoot = config['work_dir']
 
 if not os.path.isdir(sdcardDir):
     print(f"SDCard directory '{sdcardDir}' Does not exist")
     exit(1)
 
-if not os.path.isdir(workDir):
-    print(f"Destination '{workDir}' Does not exist")
+if not os.path.isdir(workDirRoot):
+    print(f"Destination directory '{workDirRoot}' Does not exist")
     exit(1)
 
-workDir=workDir+"/Downloaded-"+datetime.datetime.now().strftime('%Y-%m-%d')
+count=1;
+created=False;
 
-# FIXME: Create a new directory if workDir exists
-if not os.path.isdir(workDir):
+while not created:
+  workDir=os.path.join(workDirRoot, f"Downloaded-{datetime.datetime.now().strftime('%Y-%m-%d')}_{count}")
+
+  if os.path.isdir(workDir):
+    count = count+1;
+  else:
     os.mkdir(workDir)
-    print(f"{workDir} created.")
-else:
-    print(f"{workDir} exists.")
+    print(f"++ Output directory '{workDir}' created.")
+    created=True
 
 # -----------------------------------------------------------------
 def errhandler(err):
@@ -131,7 +132,7 @@ def convert_nmea_to_gpx(inputNmea, outputGpx):
     try:
         # Run the command
         subprocess.run(command, check=True, capture_output=True, text=True)
-        print(f"++ Successfully converted '{inputNmea}' to '{outputGpx}'")
+        print(f"++ Successfully converted NMEA file to '{outputGpx}'")
     except subprocess.CalledProcessError as e:
         print(f"-- Error during conversion of '{inputNmea}' to '{outputGpx}': {e.stderr}")
 
@@ -148,46 +149,63 @@ class Geocode:
           print("No lat/lon, not moving")
           return None
       else:
-          if Geocode.last and ((datetime.datetime.now()-Geocode.last).total_seconds() < 2):
-            time.sleep(2)
 
-          # FIXME: Retry if reverse geocoding fails 
-          try:
-            location = Geocode.geolocator.reverse(coords)
-            Geocode.last=datetime.datetime.now()
+          done = False
+          retries = 0
 
-            locName=""
-            if 'hamlet' in location.raw['address']:
-                locName=location.raw['address']['hamlet']
-            elif 'village' in location.raw['address']:
-                locName=location.raw['address']['village']
-            elif 'suburb' in location.raw['address']:
-                locName=location.raw['address']['suburb']
-            elif 'town' in location.raw['address']:
-                locName=location.raw['address']['town']
-            elif 'city' in location.raw['address']:
-                locName=location.raw['address']['city']
-            elif 'county' in location.raw['address']:
-                locName=location.raw['address']['county']
-            elif 'state' in location.raw['address']:
-                locName=location.raw['address']['state']
-            elif 'name' in location.raw['address']:
-                locName=location.raw['address']['name']
-            else:
-              print(f"WARNING: No location from - {location.raw}")
-              locName="UNKNOWN"
+          while not done:
+            try:
+              if Geocode.last and ((datetime.datetime.now()-Geocode.last).total_seconds() < 2):
+                time.sleep(2)
+              location = Geocode.geolocator.reverse(coords)
+              Geocode.last=datetime.datetime.now()
 
-            locName=locName.replace(" ","_")
-          except Exception as inst:
-            print(f"WARNING: Unable to reverse geocode")
-            locName="UNKNOWN"
+              locName=""
+              if 'hamlet' in location.raw['address']:
+                  locName=location.raw['address']['hamlet']
+                  done = True
+              elif 'village' in location.raw['address']:
+                  locName=location.raw['address']['village']
+                  done = True
+              elif 'suburb' in location.raw['address']:
+                  locName=location.raw['address']['suburb']
+                  done = True
+              elif 'town' in location.raw['address']:
+                  locName=location.raw['address']['town']
+                  done = True
+              elif 'city' in location.raw['address']:
+                  locName=location.raw['address']['city']
+                  done = True
+              elif 'county' in location.raw['address']:
+                  locName=location.raw['address']['county']
+                  done = True
+              elif 'state' in location.raw['address']:
+                  locName=location.raw['address']['state']
+                  done = True
+              elif 'name' in location.raw['address']:
+                  locName=location.raw['address']['name']
+                  done = True
+              else:
+                print(f"WARNING: No location from - {location.raw}")
+                locName="UNKNOWN"
+                done = True
+
+              locName=locName.replace(" ","_")
+            except Exception as inst:
+              print(f"WARNING: Unable to reverse geocode, retrying")
+              retries = retries + 1
+              if retries > 5:
+                print(f"WARNING: Unable to reverse geocode even after retrying")
+                locName="UNKNOWN"
+                done=True
+
 
           return locName
 
 # -----------------------------------------------------------------
 # Transfer .MP4 and .NMEA files from SDCARD
 
-dirs=[]
+dirs=set()
 
 geo=Geocode()
 
@@ -217,29 +235,25 @@ for entry in os.scandir(sdcardDir):
         if not ignoreVideo:
 
             area=geo.reverse(start)
-
-            destDir=workDir+"/"+time.strftime('%Y-%m-%d',startDateTime)+"_"+area
-            if destDir not in dirs:
-                dirs.append(destDir)
-
+ 
+            destDir=os.path.join(workDir, f"{time.strftime('%Y-%m-%d_%H:%M:%S',startDateTime)}_{area}")
+            dirs.add(destDir)
             if not os.path.isdir(destDir):
-                os.mkdir(destDir)
+              os.mkdir(destDir)
 
-            destNmea=os.path.join(destDir, entry.name.replace(".NMEA",".nmea"))
+            # Convert .nmea file to .gpx
             destGpx=os.path.join(destDir, entry.name.replace(".NMEA",".gpx"))
+            convert_nmea_to_gpx(entry.path, destGpx)
 
             srcMp4=entry.path.replace(".NMEA",".MP4")
-            if args.copy:
+            if args.keep:
                 print(f"++ Copy {name} files to {destDir}")
-                shutil.copy(entry.path, destNmea)
                 shutil.copy(srcMp4, destDir)
             else:
                 print(f"++ Move {name} files to {destDir}")
-                shutil.move(entry.path, destNmea)
+                os.remove(entry.path)
                 shutil.move(srcMp4, destDir)
 
-            # Convert .nmea file in destDir to .gpx
-            convert_nmea_to_gpx(destNmea, destGpx)
 
 
 # -----------------------------------------------------------------
@@ -247,9 +261,10 @@ for entry in os.scandir(sdcardDir):
 
 for dir in dirs:
   if args.dontProcess:
-    print(f"Not processing or uploading '{dir}' for Mapillary")
+    print(f"-- Not processing or uploading '{dir}' for Mapillary")
+    print(f"   Use 'mapillary_tools process --video_geotag_source gpx {dir}' to process")
   else:
-    print(f"Process '{dir}', using .gpx file")
+    print(f"++ Process '{dir}', using .gpx file")
     subprocess.call(["mapillary_tools","process","--video_geotag_source","gpx",dir])
 
 # -----------------------------------------------------------------
@@ -257,9 +272,10 @@ for dir in dirs:
 
 for dir in dirs:
     if args.dontProcess or args.dontUpload:
-      print(f"Not uploading '{dir}' to Mapillary")
+      print(f"-- Not uploading '{dir}' to Mapillary")
+      print(f"   Use 'mapillary_tools upload {dir}' to upload")
     else:
-      print(f"Upload '{dir}'")
+      print(f"++ Upload '{dir}'")
       subprocess.call(["mapillary_tools","upload",dir])
 
 
