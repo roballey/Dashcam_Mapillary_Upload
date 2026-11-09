@@ -2,23 +2,15 @@
 
 # Upload Pioneer dash cam photos from SD card to Mapillary.
 
-# 1. Moves front video and nmea files from SD card to "<yyyy-mm-dd>_<area>" directory under work directory
+# 1. Moves front MO4 video and NMEA files from SD card to "<yyyy-mm-dd>_<area>" directory under work directory
 #    Where <yyyy-mm-dd> is the starting date from the NMEA file and <area> is the reverse geocoded name of the start position
 #    1a. Ignore files without GPS lock or if entire video is stationary
-#    1b. Converts .nmea file to .gpx files with `gpsbabel`
 # 2. Foreach  "<yyyy-mm-dd>_<area>" directory created:
-#    2a. Use mapillary_tools to process videos with .gpx file
+#    2a. Use mapillary_tools to process videos with .nmea file
 #    2b. Use mapillary_tools to upload videos
 
 # TODO: Process rear camera photos as well?  (FILEE*.MP4)   (Can no longer see rear camera files on SDCARD as of 2026)
 # TODO: Remove rear camera and skipped files from SD Card?
-#
-# NOTE: Process with NMEA no longer works, get 0 meta data and file does not upload
-#       This script has been modified to convert .nmea file to .gpx via `gpsbabel`
-#       (install with apt) and process with .gpx files.
-#
-# NOTE: Nov-2026 Started modifying to use NMEA files again (now supported again in mapillary_tools 1.5.0)
-#       Now transfers NMEA files to destination durectory as well as converting to GPX
 
 import argparse
 import calendar
@@ -124,23 +116,6 @@ def parse_nmea(path, name):
         return None,  (None, None), (None, None)
 
 # -----------------------------------------------------------------
-def convert_nmea_to_gpx(inputNmea, outputGpx):
-    # Construct the command as a list of arguments
-    command = [
-        "gpsbabel",
-        "-i", "nmea", "-f", inputNmea,
-        "-o", "gpx", "-F", outputGpx
-    ]
-    
-    try:
-        # Run the command
-        subprocess.run(command, check=True, capture_output=True, text=True)
-        print(f"++ Successfully converted NMEA file to '{outputGpx}'")
-    except subprocess.CalledProcessError as e:
-        print(f"-- Error during conversion of '{inputNmea}' to '{outputGpx}': {e.stderr}")
-
-
-# -----------------------------------------------------------------
 class Geocode:
   def __init__(self):
     Geocode.geolocator = Nominatim(user_agent="Process_And_Upload_Dashcam")
@@ -244,19 +219,17 @@ for srcFile in os.scandir(sdcardDir):
             if not os.path.isdir(destDir):
               os.mkdir(destDir)
 
-            # Convert .NMEA file (still on SDCard)  to .gpx (in destination directory)
-            destGpx=os.path.join(destDir, srcFile.name.replace(".NMEA",".gpx"))
-            convert_nmea_to_gpx(srcFile.path, destGpx)
-
+            # Also change case of .NMEA extension to lower case (as mapillary_tools only work with lower)
+            destNmea=srcFile.name.replace(".NMEA",".nmea")
             srcMp4=srcFile.path.replace(".NMEA",".MP4")
+
             if args.keep:
                 print(f"++ Copy {srcName} files to {destDir}")
+                shutil.copy(srcFile.path, os.path.join(destDir, destNmea))
                 shutil.copy(srcMp4, destDir)
             else:
                 print(f"++ Move {srcName} files to {destDir}")
-                # Was removing srcFile (i.e. NMEA file), move it instead
-                # os.remove(srcFile.path)        
-                shutil.move(srcFile, destDir)
+                shutil.move(srcFile.path, os.path.join(destDir, destNmea))
                 shutil.move(srcMp4, destDir)
 
 
@@ -267,10 +240,10 @@ for srcFile in os.scandir(sdcardDir):
 for dir in dirs:
   if args.dontProcess:
     print(f"-- Not processing or uploading '{dir}' for Mapillary")
-    print(f"   Use 'mapillary_tools process --video_geotag_source gpx {dir}' to process")
+    print(f"   Use 'mapillary_tools process --video_geotag_source nmea {dir}' to process")
   else:
-    print(f"++ Process '{dir}', using .gpx file")
-    subprocess.call(["mapillary_tools","process","--video_geotag_source","gpx",dir])
+    print(f"++ Process '{dir}', using .nmea file")
+    subprocess.call(["mapillary_tools","process","--video_geotag_source","nmea",dir])
 
 # -----------------------------------------------------------------
 # Use mapillary_tools to upload processed videos, directory at a time
@@ -278,7 +251,6 @@ for dir in dirs:
 for dir in dirs:
     if args.dontProcess or args.dontUpload:
       print(f"-- Not uploading '{dir}' to Mapillary")
-      print(f"   Use 'mapillary_tools upload {dir}' to upload")
     else:
       print(f"++ Upload '{dir}'")
       subprocess.call(["mapillary_tools","upload",dir])
