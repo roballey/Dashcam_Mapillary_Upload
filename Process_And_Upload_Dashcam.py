@@ -16,6 +16,9 @@
 # NOTE: Process with NMEA no longer works, get 0 meta data and file does not upload
 #       This script has been modified to convert .nmea file to .gpx via `gpsbabel`
 #       (install with apt) and process with .gpx files.
+#
+# NOTE: Nov-2026 Started modifying to use NMEA files again (now supported again in mapillary_tools 1.5.0)
+#       Now transfers NMEA files to destination durectory as well as converting to GPX
 
 import argparse
 import calendar
@@ -209,14 +212,14 @@ dirs=set()
 
 geo=Geocode()
 
-for entry in os.scandir(sdcardDir):
-    if entry.name.endswith(".NMEA"):
-        name, ext=os.path.splitext(entry.name)
-        startDateTime, start, end=parse_nmea(entry.path, name)
+for srcFile in os.scandir(sdcardDir):
+    if srcFile.name.endswith(".NMEA"):
+        srcName, ext=os.path.splitext(srcFile.name)
+        startDateTime, start, end=parse_nmea(srcFile.path, srcName)
 
         # Ignore files that don't have a start time (GPS lock not obtained)
         if not startDateTime:
-            print(f"-- No time/date parsed from .nmea file or stationary video, skip '{name}'")
+            print(f"-- No time/date parsed from .nmea file or stationary video, skip '{srcName}'")
             continue
 
 
@@ -224,11 +227,11 @@ for entry in os.scandir(sdcardDir):
         ignoreVideo = False
         for ignore in config['ignore']:
             if distance.distance((ignore['lat'],ignore['lon']), start).km < ignore['delta']:
-                print(f"-- Start close to {ignore['name']}, skip {name}")
+                print(f"-- Start close to {ignore['name']}, skip {srcName}")
                 ignoreVideo = True
 
             elif distance.distance((ignore['lat'],ignore['lon']), end).km < ignore['delta']:
-                print(f"-- End close to {ignore['name']}, skip {name}")
+                print(f"-- End close to {ignore['name']}, skip {srcName}")
                 ignoreVideo = True
 
         # Transfer .MP4 and .NMEA files from SD card to "<yyyy-mm-dd>" directory under work directory
@@ -241,17 +244,19 @@ for entry in os.scandir(sdcardDir):
             if not os.path.isdir(destDir):
               os.mkdir(destDir)
 
-            # Convert .nmea file to .gpx
-            destGpx=os.path.join(destDir, entry.name.replace(".NMEA",".gpx"))
-            convert_nmea_to_gpx(entry.path, destGpx)
+            # Convert .NMEA file (still on SDCard)  to .gpx (in destination directory)
+            destGpx=os.path.join(destDir, srcFile.name.replace(".NMEA",".gpx"))
+            convert_nmea_to_gpx(srcFile.path, destGpx)
 
-            srcMp4=entry.path.replace(".NMEA",".MP4")
+            srcMp4=srcFile.path.replace(".NMEA",".MP4")
             if args.keep:
-                print(f"++ Copy {name} files to {destDir}")
+                print(f"++ Copy {srcName} files to {destDir}")
                 shutil.copy(srcMp4, destDir)
             else:
-                print(f"++ Move {name} files to {destDir}")
-                os.remove(entry.path)
+                print(f"++ Move {srcName} files to {destDir}")
+                # Was removing srcFile (i.e. NMEA file), move it instead
+                # os.remove(srcFile.path)        
+                shutil.move(srcFile, destDir)
                 shutil.move(srcMp4, destDir)
 
 
